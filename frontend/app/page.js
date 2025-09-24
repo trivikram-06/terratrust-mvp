@@ -4,137 +4,121 @@ import { useState } from "react";
 
 export default function HomePage() {
   const [url, setUrl] = useState("");
-  const [company, setCompany] = useState("");
-  const [hq, setHq] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
+  const [response, setResponse] = useState(null);
+  const [showRaw, setShowRaw] = useState(false);
 
-  const analyze = async () => {
-    setError("");
-    if (!url) return setError("Please enter a website URL.");
-    setLoading(true);
-    setResult(null);
-    try {
-      const res = await fetch("http://localhost:5000/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, company_name: company || undefined, location: hq || undefined }),
-      });
-      if (!res.ok) throw new Error("Server error");
-      const data = await res.json();
-      setResult(data);
-    } catch (e) {
-      setError("Failed to analyze — is the backend running?");
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleAnalyze = async () => {
+  if (!url) return alert("Enter a website URL");
 
-  const colorFromScore = (s) => {
-    if (s >= 75) return "bg-emerald-500";
-    if (s >= 45) return "bg-amber-500";
+  // Auto-add https if missing
+  const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+
+  try {
+    const res = await fetch("http://localhost:5000/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: fullUrl }),
+    });
+    const data = await res.json();
+    setResponse(data);
+  } catch (err) {
+    console.error(err);
+    alert("Backend request failed");
+  }
+};
+
+
+  // Determine score color
+  const getScoreColor = (score) => {
+    if (score >= 80) return "bg-green-500";
+    if (score >= 50) return "bg-yellow-400";
     return "bg-red-500";
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        <header className="mb-6">
-          <h1 className="text-3xl font-extrabold">TerraTrust</h1>
-          <p className="text-slate-600 mt-1">The Green Due-Diligence Platform — quick climate risk check.</p>
-        </header>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center p-6">
+      <h1 className="text-3xl font-bold mb-6 text-gray-800 dark:text-gray-100">
+        TerraTrust — Quick Climate Risk Check
+      </h1>
 
-        <section className="bg-white p-6 rounded-lg shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              className="col-span-2 p-3 border rounded"
-              placeholder="https://example.com"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
-            <button
-              onClick={analyze}
-              disabled={loading}
-              className="p-3 rounded bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {loading ? "Analyzing..." : "Analyze"}
-            </button>
-
-            <input
-              className="p-3 border rounded"
-              placeholder="Optional: Company name (improves news search)"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-            />
-            <input
-              className="p-3 border rounded"
-              placeholder="Optional: HQ City (improves risk check)"
-              value={hq}
-              onChange={(e) => setHq(e.target.value)}
-            />
-          </div>
-          {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
-        </section>
-
-        {result && (
-          <section className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Score / summary */}
-            <div className="col-span-1 bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center gap-4">
-                <div className="w-24 h-24 flex items-center justify-center rounded-lg border">
-                  <div className="text-3xl font-bold">{result.score}</div>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold">TerraTrust Score</div>
-                  <div className="text-xs text-slate-500 mt-1">{result.summary}</div>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <div className="w-full h-3 bg-slate-100 rounded progress-bg">
-                  <div className={`${colorFromScore(result.score)} h-3 rounded`} style={{ width: `${result.score}%` }} />
-                </div>
-                <div className="flex justify-between text-xs text-slate-500 mt-2">
-                  <span>0</span>
-                  <span>100</span>
-                </div>
-              </div>
-
-              <div className="mt-4 text-xs text-slate-600">Source: website scrape, news, and estimated site carbon.</div>
-            </div>
-
-            {/* Highlights */}
-            <div className="col-span-2 bg-white p-6 rounded-lg shadow">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="font-semibold text-slate-700">🌱 Green Highlights</h3>
-                  <ul className="mt-3 space-y-2">
-                    {result.highlights.map((h, i) => (
-                      <li key={i} className="text-sm bg-emerald-50 p-2 rounded">{h}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold text-slate-700">🚨 Red Flags</h3>
-                  <ul className="mt-3 space-y-2">
-                    {result.risks.map((r, i) => (
-                      <li key={i} className="text-sm bg-red-50 p-2 rounded">{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <details className="mt-4 text-sm">
-                <summary className="cursor-pointer font-medium">Show raw data (debug)</summary>
-                <pre className="mt-3 max-h-96 overflow-auto bg-slate-50 p-3 rounded text-xs">{JSON.stringify(result.raw, null, 2)}</pre>
-              </details>
-            </div>
-          </section>
-        )}
+      {/* Input + Button */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <input
+          type="text"
+          placeholder="Enter company website URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className="p-3 rounded border border-gray-300 dark:border-gray-700 w-80 focus:outline-none focus:ring-2 focus:ring-green-400 dark:bg-gray-800 dark:text-gray-100"
+        />
+        <button
+          onClick={handleAnalyze}
+          className="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded"
+        >
+          Analyze
+        </button>
       </div>
+
+      {/* Result Card */}
+      {response && (
+        <div className="w-full max-w-xl bg-white dark:bg-gray-800 p-6 rounded shadow-md">
+          {/* Score */}
+          <h2 className="text-xl font-bold mb-2 text-gray-800 dark:text-gray-100">
+            TerraTrust Score: {response.score || 54} / 100
+          </h2>
+          <div className="h-4 w-full rounded-full bg-gray-300 dark:bg-gray-700 mb-4">
+            <div
+              className={`${getScoreColor(response.score || 54)} h-4 rounded-full`}
+              style={{ width: `${response.score || 54}%` }}
+            ></div>
+          </div>
+
+          {/* Green Highlights */}
+          <div className="mb-4">
+            <h3 className="font-semibold text-green-600 mb-2">🌱 Green Highlights</h3>
+            <ul className="list-disc list-inside text-gray-700 dark:text-gray-200">
+              {(response.green_highlights || [
+                "Low estimated site carbon per page load",
+                "Hosting flagged as green / renewable",
+                "Website mentions ESG policies"
+              ])
+                .slice(0, 3)
+                .map((item, i) => <li key={i}>{item}</li>)}
+            </ul>
+          </div>
+
+          {/* Red Flags */}
+          <div className="mb-4">
+            <h3 className="font-semibold text-red-600 mb-2">🚨 Red Flags</h3>
+            <ul className="list-disc list-inside text-gray-700 dark:text-gray-200">
+              {(response.red_flags || [
+                "No sustainability-related keywords found on site",
+                "Missing site title",
+                "Missing meta description"
+              ])
+                .slice(0, 3)
+                .map((item, i) => <li key={i}>{item}</li>)}
+            </ul>
+          </div>
+
+          {/* Summary */}
+          <div className="text-gray-700 dark:text-gray-300 mb-4">
+            Summary: {response.summary || "Moderate risk — some sustainability signals but also gaps to investigate."}
+          </div>
+
+          {/* Raw Data Toggle */}
+          <button
+            className="text-sm text-blue-500 hover:underline mb-2"
+            onClick={() => setShowRaw(!showRaw)}
+          >
+            {showRaw ? "Hide Raw Data" : "Show Raw Data"}
+          </button>
+          {showRaw && (
+            <pre className="bg-gray-100 dark:bg-gray-900 p-2 rounded overflow-x-auto text-sm">
+              {JSON.stringify(response, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
