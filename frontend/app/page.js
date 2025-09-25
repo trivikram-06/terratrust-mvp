@@ -3,121 +3,173 @@
 import { useState } from "react";
 
 export default function HomePage() {
-  const [url, setUrl] = useState("");
-  const [response, setResponse] = useState(null);
-  const [showRaw, setShowRaw] = useState(false);
+  const [urls, setUrls] = useState("");
+  const [mode, setMode] = useState("single"); // "single" or "multiple"
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const handleAnalyze = async () => {
-    if (!url) return alert("Enter a website URL");
+    const urlList =
+      mode === "multiple"
+        ? urls.split(",").map((u) => u.trim()).filter(Boolean)
+        : [urls.trim()];
 
-    const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+    if (urlList.length === 0) return alert("Please enter URL(s)");
 
+    setLoading(true);
     try {
       const res = await fetch("http://localhost:5000/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: fullUrl }),
+        body: JSON.stringify({ urls: urlList }),
       });
       const data = await res.json();
-      setResponse(data);
+      setResults(data);
     } catch (err) {
       console.error(err);
-      alert("Backend request failed");
+      alert("Error analyzing URLs");
+    }
+    setLoading(false);
+  };
+
+  const handleDownloadPDF = async () => {
+    if (results.length === 0) return alert("No results to download");
+    try {
+      const res = await fetch("http://localhost:5000/export-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ results }),
+      });
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "terratrust_report.pdf";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Error generating PDF");
     }
   };
 
   return (
     <div className="container">
-      <h1>TerraTrust — Quick Climate Risk Check</h1>
+      <h1>TerraTrust Dashboard</h1>
 
-      {/* Input + Button */}
-      <div style={{ display: "flex", marginBottom: "20px" }}>
-        <input
-          type="text"
-          placeholder="Enter company website URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <button onClick={handleAnalyze}>Analyze</button>
+      {/* Mode selection */}
+      <div style={{ marginBottom: "15px" }}>
+        <button
+          style={{
+            marginRight: "10px",
+            background: mode === "single" ? "#007bff" : "#ccc",
+            color: "#fff",
+            padding: "5px 10px",
+          }}
+          onClick={() => setMode("single")}
+        >
+          Single Company
+        </button>
+        <button
+          style={{
+            background: mode === "multiple" ? "#007bff" : "#ccc",
+            color: "#fff",
+            padding: "5px 10px",
+          }}
+          onClick={() => setMode("multiple")}
+        >
+          Multiple Companies
+        </button>
       </div>
 
+      {/* URL input */}
+      <input
+        type="text"
+        value={urls}
+        onChange={(e) => setUrls(e.target.value)}
+        placeholder={
+          mode === "single"
+            ? "Enter company URL"
+            : "Enter multiple URLs separated by comma"
+        }
+      />
+      <button onClick={handleAnalyze}>{loading ? "Analyzing..." : "Analyze"}</button>
+
+      {/* Download PDF */}
+      {results.length > 0 && (
+        <div style={{ marginTop: "15px" }}>
+          <button
+            onClick={handleDownloadPDF}
+            style={{ padding: "8px 15px", background: "green", color: "#fff" }}
+          >
+            Download PDF Report
+          </button>
+        </div>
+      )}
+
       {/* Results */}
-      {response && (
-        <div>
+      {results.map((r, i) => (
+        <div
+          key={i}
+          style={{
+            border: "1px solid #ddd",
+            padding: "15px",
+            marginTop: "15px",
+            borderRadius: "10px",
+          }}
+        >
+          <h2>{r.url}</h2>
+
           {/* Circular Score */}
           <div className="circle-container">
             <div
               className="circle"
-              style={{ "--score": response.score || 54 }}
+              style={{ "--score": r.scores.total || 50 }}
             >
-              <div className="circle-text">
-                {response.score || 54}
-              </div>
+              <div className="circle-text">{r.scores.total || 50}</div>
             </div>
           </div>
 
-          {/* Green Highlights */}
+          {/* Category Scores */}
+          <div className="score">
+            Carbon: {r.scores.carbon} | Reputation: {r.scores.reputation} | Location: {r.scores.location} | Policy: {r.scores.policy}
+          </div>
+
+          {/* Highlights */}
           <div className="green-section">
-            <h2>🌱 Green Highlights</h2>
+            <h2>🌱 Highlights</h2>
             <ul>
-              {(response.green_highlights || [
-                "Low estimated site carbon per page load",
-                "Hosting flagged as green / renewable",
-                "Website mentions ESG policies",
-              ])
-                .slice(0, 3)
-                .map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
+              {(r.raw.website.found_keywords.length > 0
+                ? r.raw.website.found_keywords.slice(0, 3)
+                : ["No sustainability keywords found"]
+              ).map((h, idx) => (
+                <li key={idx}>{h}</li>
+              ))}
             </ul>
           </div>
 
-          {/* Red Flags */}
+          {/* Risks */}
           <div className="red-section">
-            <h2>🚨 Red Flags</h2>
+            <h2>🚨 Risks</h2>
             <ul>
-              {(response.red_flags || [
-                "No sustainability-related keywords found on site",
-                "Missing site title",
-                "Missing meta description",
-              ])
+              {(!r.raw.website.found_keywords.length
+                ? ["No sustainability keywords found"]
+                : []
+              )
+                .concat(
+                  r.raw.website.reports.length === 0 ? ["No report PDFs found"] : []
+                )
                 .slice(0, 3)
-                .map((item, i) => (
-                  <li key={i}>{item}</li>
+                .map((risk, idx) => (
+                  <li key={idx}>{risk}</li>
                 ))}
             </ul>
           </div>
 
           {/* Summary */}
-          <div className="summary">
-            Summary:{" "}
-            {response.summary ||
-              "Moderate risk — some sustainability signals but also gaps to investigate."}
-          </div>
-
-          {/* Raw Data Toggle */}
-          <button
-            style={{ marginTop: "15px", background: "transparent", color: "#007bff" }}
-            onClick={() => setShowRaw(!showRaw)}
-          >
-            {showRaw ? "Hide Raw Data" : "Show Raw Data"}
-          </button>
-          {showRaw && (
-            <pre
-              style={{
-                background: "#f4f4f4",
-                padding: "10px",
-                borderRadius: "6px",
-                marginTop: "10px",
-                fontSize: "14px",
-                overflowX: "auto",
-              }}
-            >
-              {JSON.stringify(response, null, 2)}
-            </pre>
-          )}
+          <div className="summary">{r.summary}</div>
         </div>
-      )}
+      ))}
     </div>
   );
 }
